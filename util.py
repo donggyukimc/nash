@@ -5,22 +5,30 @@ import pickle
 from tqdm import tqdm
 from nltk.stem.porter import PorterStemmer
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
+from sklearn.preprocessing import LabelEncoder
+
 
 stemmer = PorterStemmer()
 
+
 def word_tokenize(text) :
+    "tokenize given text"
     return [stemmer.stem(token) for token in nltk.word_tokenize(text)]
 
+
 def clear_text(text) :
+    "cleaning given text"
     text = text.lower()
     text = re.sub("[^0-9a-z]", " ", text)
     text = re.sub(" +", " ", text)
     return text
 
-def load_data(feature_type="onehot" # onehot or tfidf 
+
+def load_data(feature_type="onehot"
             , path="data/20news-18828"
             , data_path="data.pkl"
             ) :
+    "make data or load"
 
     if os.path.exists(data_path) :
         with open(data_path, "rb") as handle :
@@ -58,7 +66,7 @@ def load_data(feature_type="onehot" # onehot or tfidf
                             , min_df=2)
 
     token_features = vectorizer.fit_transform(corpus)
-    print(token_features.shape)
+    category = LabelEncoder().fit_transform(category)
     
     data = {"feature":token_features
             , "category":category}

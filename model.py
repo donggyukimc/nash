@@ -2,32 +2,35 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+
 class NASH(nn.Module) :
-    def __init__(self, input_size
-                , hidden_size=500
-                , output_size=128
-                , layer_num=2
-                , dropout=0.1
-                , deterministic=True
-                ) :
+    def __init__(self, config, input_size) :
         super(NASH, self).__init__()
         
-        # build encoder network
+        self.dropout = nn.Dropout(config.dropout)
+        self.sigmoid = nn.Sigmoid()
+
+        # encoder network
         self.encoder = nn.Sequential(
-            nn.Linear(input_size, hidden_size)
+            nn.Linear(input_size, config.hidden_size)
             , nn.ReLU()
-            , nn.Dropout(dropout)
-            , nn.Linear(hidden_size, output_size)
+            , nn.Dropout(config.dropout)
+            , nn.Linear(config.hidden_size, config.output_size)
             , nn.Sigmoid()
-            )
+        )
 
-        # decoder embedding
-        self.E = nn.Embedding(input_size, output_size)
-        
-        # network for gaussian noise
-        self.std = nn.Linear(output_size, output_size)
+        # decoder network
+        self.decoder = nn.Linear(config.output_size, input_size)
 
-        self.deterministic = deterministic
+        # noise network
+        self.sigma = nn.Linear(config.output_size, config.output_size)
+
+        self.deterministic = config.deterministic
+        self.mu = None
+        if not self.deterministic :
+            self.mu = torch.rand(config.output_size)
+            if config.use_cuda :
+                self.mu = self.mu.cuda()
 
     def binarization(self, x) :
         if self.deterministic :
@@ -35,46 +38,44 @@ class NASH(nn.Module) :
             mu = 0.5
         else :
             # stochastic binarization
-            mu = torch.rand(x.size())
+            if self.mu is None :
+                self.mu = torch.rand(x.size(-1)).cuda()
+            mu = self.mu
         code = (torch.sign(x - mu) + 1) / 2
-        return code, mu
+        return code
+
+    def encode(self, x) :
+        z = self.encoder(x)
+        z_quantized = self.binarization(z)
+        return z_quantized
 
     def forward(self, x) :
-        #print(x.size())
-
+        # get hash code
         z = self.encoder(x)
-        #print(z.size())
 
-        #KL = z*torch.log()
+        # kl term loss
+        kl_loss = torch.mean(torch.sum(
+            z * torch.log(z / 0.5) + 
+            (1-z) * torch.log((1 - z) / 0.5)
+            , dim=-1))
 
-        z_quantized, mu = self.binarization(z)
-        #print(z_quantized.size())
-
-        kl_loss = torch.sum(z*torch.log(z/mu) + (1-z)*torch.log((1-z)/(1-mu)))
-        #print("kl")
-        #print(kl_loss)
+        z_quantized = self.binarization(z)
 
         # Straight-Throught estimation
-        # preserve reconstruction gradient of quantized latent to continous latent z
+        # preserve reconstruction loss gradient of quantized latent to continuous latent z
         z_quantized = z + (z_quantized-z).detach()
-        #print(z_quantized)
+        z_quantized = self.dropout(z_quantized)
 
-        z_noise = z_quantized + self.std(z)
-        #print(z_noise)
+        # add noise to code
+        z_noise = z_quantized + self.dropout(self.sigmoid(self.sigma(z)))
 
-        x_onehot = (~(x==0)).long()
-        #print(x_onehot.size())
-
-        x_hat = self.E(x_onehot)
-        #print(x_hat.size())
-
-        logit = torch.matmul(z_noise.unsqueeze(1), x_hat.transpose(-2, -1)).squeeze(1)
-        #print(logit.size())
-
+        # reconstruct bag-of-words
+        logit = self.decoder(z_noise)
         prob = F.log_softmax(logit, dim=-1)
-        #print(prob.size())
+        x_onehot = (~(x==0)).long() # bag-of-words representation
+        rec_loss = torch.mean(torch.sum(prob*x_onehot.float(), dim=-1)/torch.sum(x_onehot, dim=-1))
 
-        loss = -torch.mean(torch.sum(prob*x_onehot.float(), dim=1))
-        #print(loss)
+        # sum of loss
+        loss = -(rec_loss-kl_loss)
 
-        return loss, kl_loss
+        return loss
