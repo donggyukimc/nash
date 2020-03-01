@@ -1,5 +1,14 @@
 # nash
+Test for
+[NASH: Toward End-to-End Neural Architecture for Generative Semantic](https://www.aclweb.org/anthology/P18-1190/)
 
+###Run
+~~~
+bash prepare.sh
+python main.py
+~~~
+
+###Result
 ~~~
 100%|████████████████████████████████████████████████████████████████████| 588/588 [00:07<00:00, 75.79it/s]
 train epoch 1 : 8.408826106259612
