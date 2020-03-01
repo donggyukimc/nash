@@ -8,7 +8,6 @@ class NASH(nn.Module) :
         super(NASH, self).__init__()
         
         self.dropout = nn.Dropout(config.dropout)
-        self.sigmoid = nn.Sigmoid()
 
         # encoder network
         self.encoder = nn.Sequential(
@@ -23,7 +22,11 @@ class NASH(nn.Module) :
         self.decoder = nn.Linear(config.output_size, input_size)
 
         # noise network
-        self.sigma = nn.Linear(config.output_size, config.output_size)
+        self.sigma = nn.Sequential(
+            nn.Linear(config.output_size, config.output_size)
+            , nn.Sigmoid()
+            , nn.Dropout(config.dropout)
+        )
 
         self.deterministic = config.deterministic
         self.mu = None
@@ -67,7 +70,7 @@ class NASH(nn.Module) :
         z_quantized = self.dropout(z_quantized)
 
         # add noise to code
-        z_noise = z_quantized + self.dropout(self.sigmoid(self.sigma(z)))
+        z_noise = z_quantized + self.sigma(z)
 
         # reconstruct bag-of-words
         logit = self.decoder(z_noise)
