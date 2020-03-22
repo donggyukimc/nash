@@ -1,5 +1,5 @@
 # nash
-Test for
+Implementation for
 [NASH: Toward End-to-End Neural Architecture for Generative Semantic](https://www.aclweb.org/anthology/P18-1190/)
 
 ### Run
